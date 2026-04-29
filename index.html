@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spotify Track Analyzer</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="credentials.js"></script>
+<style>
+  :root {
+    --bg: #121212;
+    --surface: #181818;
+    --surface-interactive: #1f1f1f;
+    --surface-elevated: #252525;
+    --border: #4d4d4d;
+    --border-muted: #7c7c7c;
+    --accent: #1ed760;
+    --accent-dim: #1db954;
+    --text-primary: #ffffff;
+    --text-secondary: #b3b3b3;
+    --text-muted: #7c7c7c;
+    --negative: #f3727f;
+
+    --font-ui: "SpotifyMixUI", "CircularSp-Arab", "CircularSp-Hebr", "CircularSp-Cyrl",
+               "CircularSp-Grek", "CircularSp-Deva", "Helvetica Neue", helvetica, arial,
+               "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, "MS Gothic", sans-serif;
+    --font-title: "SpotifyMixUITitle", var(--font-ui);
+
+    --shadow-heavy: rgba(0,0,0,0.5) 0px 8px 24px;
+    --shadow-medium: rgba(0,0,0,0.3) 0px 8px 8px;
+    --shadow-inset-input: rgb(18,18,18) 0px 1px 0px, rgb(124,124,124) 0px 0px 0px 1px inset;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: var(--font-ui);
+    font-weight: 400;
+    font-size: 16px;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-track { background: #0a0a0a; }
+  ::-webkit-scrollbar-thumb { background: #535353; border-radius: 6px; border: 3px solid #0a0a0a; }
+  ::-webkit-scrollbar-thumb:hover { background: #6a6a6a; }
+
+  nav {
+    background: #000;
+    padding: 16px 32px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid #000;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-primary);
+    font-family: var(--font-title);
+    font-weight: 700;
+    font-size: 18px;
+  }
+
+  .logo svg { width: 32px; height: 32px; }
+
+  main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px;
+  }
+
+  h1, h2 { font-family: var(--font-title); font-weight: 700; }
+  h1 { font-size: 24px; margin-bottom: 8px; }
+  h2 { font-size: 18px; font-family: var(--font-ui); font-weight: 600; line-height: 1.3; margin-bottom: 16px; }
+  h3 {
+    font-size: 14px;
+    margin-bottom: 16px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    font-weight: 700;
+  }
+
+  .intro { margin-bottom: 20px; }
+  .intro p { color: var(--text-secondary); font-size: 14px; }
+
+  .input-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  input[type="text"] {
+    flex: 1;
+    background: var(--surface-interactive);
+    border: none;
+    border-radius: 500px;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 14px;
+    padding: 12px 20px;
+    outline: none;
+    box-shadow: var(--shadow-inset-input);
+    transition: box-shadow 0.2s;
+  }
+  input[type="text"]::placeholder { color: var(--text-secondary); }
+  input[type="text"]:focus {
+    box-shadow: rgb(18,18,18) 0px 1px 0px, #ffffff 0px 0px 0px 1px inset;
+  }
+
+  button.primary {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 9999px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    line-height: 1;
+    padding: 12px 32px;
+    cursor: pointer;
+    transition: transform 0.1s, filter 0.2s;
+  }
+  button.primary:hover { filter: brightness(1.06); transform: scale(1.04); }
+  button.primary:active { transform: scale(0.98); }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  button.secondary {
+    background: transparent;
+    color: var(--text-primary);
+    border: 1px solid var(--border-muted);
+    border-radius: 9999px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    line-height: 1;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: border-color 0.2s, transform 0.1s;
+  }
+  button.secondary:hover { border-color: var(--text-primary); transform: scale(1.04); }
+
+  .status {
+    padding: 12px 16px;
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 24px;
+  }
+  .status.error { background: var(--surface); color: var(--negative); }
+  .status.hidden { display: none; }
+
+  section { margin-bottom: 32px; }
+
+  .track-header {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 24px;
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 20px;
+    transition: background 0.2s;
+    align-items: end;
+  }
+  .track-header:hover { background: var(--surface-interactive); }
+
+  .album-art {
+    width: 200px;
+    height: 200px;
+    border-radius: 6px;
+    box-shadow: var(--shadow-heavy);
+    object-fit: cover;
+    background: #000;
+  }
+
+  .track-info-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    color: var(--text-secondary);
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .track-title {
+    font-family: var(--font-title);
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 12px;
+    word-break: break-word;
+  }
+  .track-meta { color: var(--text-secondary); font-size: 14px; line-height: 1.5; }
+  .track-meta strong { color: var(--text-primary); font-weight: 700; }
+  .track-meta .sep { margin: 0 6px; color: var(--text-muted); }
+
+  .audio-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+
+  .card {
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 16px;
+    transition: background 0.2s, box-shadow 0.2s;
+  }
+  .card:hover {
+    background: var(--surface-elevated);
+    box-shadow: var(--shadow-medium);
+  }
+
+  .card-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    color: var(--text-secondary);
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .card-value {
+    font-family: var(--font-title);
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+  }
+  .card-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    line-height: 1.5;
+  }
+  .card.camelot .card-value { color: var(--accent); }
+
+  .bar {
+    width: 100%;
+    height: 4px;
+    background: var(--surface-interactive);
+    border-radius: 2px;
+    margin-top: 10px;
+    overflow: hidden;
+  }
+  .bar > div {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.4s ease;
+  }
+
+  .wheel-panel {
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .wheel-panel svg { display: block; max-width: 100%; height: auto; }
+  .wheel-legend {
+    display: flex;
+    gap: 20px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .wheel-legend .dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+
+  .json-panel {
+    background: var(--bg);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: var(--shadow-medium);
+  }
+  .json-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--surface);
+  }
+  .json-header span {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    color: var(--text-secondary);
+  }
+  pre.json-body {
+    margin: 0;
+    padding: 16px;
+    font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    background: var(--bg);
+    max-height: 500px;
+    overflow: auto;
+    white-space: pre;
+  }
+
+  .hidden { display: none !important; }
+
+  /* Camelot Wheel SVG */
+  .wheel-segment {
+    cursor: default;
+    transition: opacity 0.2s;
+  }
+  .wheel-label {
+    fill: var(--text-primary);
+    font-family: var(--font-ui);
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events: none;
+    user-select: none;
+  }
+  .wheel-label.code { font-weight: 700; font-size: 12px; }
+  .wheel-label.key  { font-weight: 400; font-size: 10px; fill: rgba(255,255,255,0.85); }
+  .wheel-center {
+    fill: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    text-anchor: middle;
+  }
+
+  @media (max-width: 1024px) {
+    .audio-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (max-width: 768px) {
+    main { padding: 20px; }
+    .audio-grid { grid-template-columns: repeat(2, 1fr); }
+    .track-header { grid-template-columns: 1fr; gap: 16px; }
+    .album-art { width: 160px; height: 160px; }
+    .track-title { font-size: 20px; }
+    .input-row { flex-direction: column; }
+  }
+  @media (max-width: 480px) {
+    .audio-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">
+    <svg viewBox="0 0 168 168" xmlns="http://www.w3.org/2000/svg">
+      <path fill="#1DB954" d="M83.996.277C37.747.277.253 37.77.253 84.019c0 46.251 37.494 83.741 83.743 83.741 46.254 0 83.744-37.49 83.744-83.741 0-46.246-37.49-83.738-83.745-83.738zm38.404 120.78a5.217 5.217 0 01-7.18 1.73c-19.662-12.01-44.414-14.73-73.564-8.07a5.222 5.222 0 01-6.249-3.93 5.213 5.213 0 013.926-6.25c31.9-7.291 59.263-4.15 81.337 9.34 2.46 1.51 3.24 4.72 1.73 7.18zm10.25-22.805c-1.89 3.075-5.91 4.045-8.98 2.155-22.51-13.839-56.823-17.846-83.448-9.764-3.453 1.043-7.1-.903-8.148-4.35a6.538 6.538 0 014.354-8.143c30.413-9.228 68.222-4.758 94.072 11.127 3.07 1.89 4.04 5.91 2.15 8.976v-.001zm.88-23.744c-26.99-16.031-71.52-17.505-97.289-9.684-4.138 1.255-8.514-1.081-9.768-5.219a7.835 7.835 0 015.221-9.771c29.581-8.98 78.756-7.245 109.83 11.202a7.823 7.823 0 012.74 10.733c-2.2 3.722-7.02 4.949-10.73 2.739z"/>
+    </svg>
+    <span>Track Analyzer</span>
+  </div>
+</nav>
+
+<main>
+  <section class="intro">
+    <h1>Analyze a track</h1>
+    <p>Paste a Spotify track URL to see its full audio analysis and Camelot Wheel position.</p>
+  </section>
+
+  <div class="input-row">
+    <input id="urlInput" type="text" placeholder="https://open.spotify.com/track/..." autocomplete="off" spellcheck="false">
+    <button id="analyzeBtn" class="primary">Analyze</button>
+  </div>
+
+  <div id="status" class="status hidden"></div>
+
+  <div id="results" class="hidden">
+
+    <section id="trackHeaderSection">
+      <div class="track-header">
+        <img id="albumArt" class="album-art" alt="Album art">
+        <div>
+          <div class="track-info-label">Track</div>
+          <div id="trackTitle" class="track-title"></div>
+          <div class="track-meta">
+            <strong id="trackArtist"></strong>
+            <span class="sep">·</span>
+            <span id="trackAlbum"></span>
+            <span class="sep">·</span>
+            <span id="trackYear"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h3>Audio Analysis</h3>
+      <div id="audioGrid" class="audio-grid"></div>
+    </section>
+
+    <section>
+      <h3>Camelot Wheel</h3>
+      <div class="wheel-panel">
+        <div id="wheel"></div>
+        <div class="wheel-legend">
+          <span><span class="dot" style="background:#1ed760"></span>Current key</span>
+          <span><span class="dot" style="background:#1db954"></span>Harmonically compatible</span>
+          <span><span class="dot" style="background:#1f1f1f;border:1px solid #4d4d4d"></span>Other keys</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h3>JSON Data</h3>
+      <div class="json-panel">
+        <div class="json-header">
+          <span>Output</span>
+          <button id="copyBtn" class="secondary">Copy</button>
+        </div>
+        <pre id="jsonBody" class="json-body"></pre>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<script>
+// =======================================================================
+// Spotify Track Analyzer — vanilla JS
+// =======================================================================
+
+const { CLIENT_ID, CLIENT_SECRET } = window.SPOTIFY_CREDENTIALS || {};
+
+// ---------- Camelot mapping ----------
+// Spotify `key` is pitch class 0..11 (C, C#, D, D#, E, F, F#, G, G#, A, A#, B)
+// Spotify `mode` is 0 = minor, 1 = major
+// Minor -> A codes, Major -> B codes.
+const PITCH_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+// Camelot number by pitch class.
+// Derived from the canonical wheel:
+//   8B = C major,  8A = A minor
+//   3B = Db major, 3A = Bb minor  ... etc.
+const CAMELOT_NUMBER_MAJOR = {
+  0: 8,   // C
+  1: 3,   // C# / Db
+  2: 10,  // D
+  3: 5,   // D# / Eb
+  4: 12,  // E
+  5: 7,   // F
+  6: 2,   // F#
+  7: 9,   // G
+  8: 4,   // G# / Ab
+  9: 11,  // A
+  10: 6,  // A# / Bb
+  11: 1   // B
+};
+const CAMELOT_NUMBER_MINOR = {
+  0: 5,   // C minor
+  1: 12,  // C# minor
+  2: 7,   // D minor
+  3: 2,   // D# / Eb minor
+  4: 9,   // E minor
+  5: 4,   // F minor
+  6: 11,  // F# minor
+  7: 6,   // G minor
+  8: 1,   // G# / Ab minor
+  9: 8,   // A minor
+  10: 3,  // A# / Bb minor
+  11: 10  // B minor
+};
+
+function camelotFor(key, mode) {
+  if (key == null || key < 0 || mode == null) return null;
+  const num = mode === 1 ? CAMELOT_NUMBER_MAJOR[key] : CAMELOT_NUMBER_MINOR[key];
+  const letter = mode === 1 ? "B" : "A";
+  return `${num}${letter}`;
+}
+
+function keyName(key, mode) {
+  if (key == null || key < 0) return "Unknown";
+  return `${PITCH_NAMES[key]} ${mode === 1 ? "major" : "minor"}`;
+}
+
+function compatibleCodes(code) {
+  if (!code) return [];
+  const num = parseInt(code);
+  const letter = code.slice(-1);
+  const other = letter === "A" ? "B" : "A";
+  const prev = ((num - 2 + 12) % 12) + 1;
+  const next = (num % 12) + 1;
+  return [`${num}${other}`, `${prev}${letter}`, `${next}${letter}`];
+}
+
+// Build full wheel segment list for rendering.
+// Order: slots 1..12, each with { num, letter, code, keyLabel }
+function buildWheelSlots() {
+  const slots = [];
+  for (let n = 1; n <= 12; n++) {
+    for (const letter of ["A", "B"]) {
+      // Find the key / mode that maps to this slot.
+      const mode = letter === "B" ? 1 : 0;
+      const table = mode === 1 ? CAMELOT_NUMBER_MAJOR : CAMELOT_NUMBER_MINOR;
+      const pitch = Object.keys(table).find(k => table[k] === n);
+      const keyLabel = pitch != null ? `${PITCH_NAMES[pitch]}${mode === 1 ? "" : "m"}` : "";
+      slots.push({
+        num: n,
+        letter,
+        code: `${n}${letter}`,
+        keyLabel
+      });
+    }
+  }
+  return slots;
+}
+
+// ---------- Spotify API ----------
+let cachedToken = null;
+let tokenExpiresAt = 0;
+
+async function getAccessToken() {
+  if (!CLIENT_ID || !CLIENT_SECRET || CLIENT_ID === "YOUR_CLIENT_ID") {
+    throw new Error(
+      "Missing Spotify credentials. Copy credentials.example.js to credentials.js " +
+      "and fill in CLIENT_ID and CLIENT_SECRET from https://developer.spotify.com/dashboard"
+    );
+  }
+  if (cachedToken && Date.now() < tokenExpiresAt - 10_000) return cachedToken;
+
+  const res = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Authorization": "Basic " + btoa(`${CLIENT_ID}:${CLIENT_SECRET}`)
+    },
+    body: "grant_type=client_credentials"
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Auth failed (${res.status}): ${text}`);
+  }
+  const data = await res.json();
+  cachedToken = data.access_token;
+  tokenExpiresAt = Date.now() + data.expires_in * 1000;
+  return cachedToken;
+}
+
+function parseTrackId(url) {
+  const m = url.trim().match(/track\/([A-Za-z0-9]{22})/);
+  if (m) return m[1];
+  // Allow raw ID
+  const raw = url.trim().match(/^[A-Za-z0-9]{22}$/);
+  if (raw) return raw[0];
+  return null;
+}
+
+async function fetchTrackData(trackId) {
+  const token = await getAccessToken();
+
+  // Spotify /v1/tracks for metadata (still accessible post-deprecation).
+  // ReccoBeats for audio features — Spotify's /v1/audio-features is 403 for
+  // apps created after 2024-11-27.
+  const [trackRes, reccoRes] = await Promise.all([
+    fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    }),
+    fetch(`https://api.reccobeats.com/v1/audio-features?ids=${trackId}`, {
+      headers: { "Accept": "application/json" }
+    })
+  ]);
+
+  if (!trackRes.ok) throw new Error(`Track fetch failed (${trackRes.status}): ${await trackRes.text()}`);
+  if (!reccoRes.ok) throw new Error(`Audio-features fetch failed (${reccoRes.status}): ${await reccoRes.text()}`);
+
+  const [track, reccoJson] = await Promise.all([trackRes.json(), reccoRes.json()]);
+
+  const recco = reccoJson?.content?.[0];
+  if (!recco) {
+    throw new Error("ReccoBeats returned no audio features for this track. It may not be in their catalog yet.");
+  }
+
+  // Shape the features into the same structure the rest of the UI expects.
+  // ReccoBeats lacks duration_ms and time_signature:
+  //   - duration_ms comes from the Spotify track object
+  //   - time_signature is not available (rendered as "—")
+  const features = {
+    tempo: recco.tempo,
+    key: recco.key,
+    mode: recco.mode,
+    energy: recco.energy,
+    danceability: recco.danceability,
+    valence: recco.valence,
+    acousticness: recco.acousticness,
+    instrumentalness: recco.instrumentalness,
+    liveness: recco.liveness,
+    loudness: recco.loudness,
+    speechiness: recco.speechiness,
+    duration_ms: track.duration_ms,
+    time_signature: null,
+    _source: "reccobeats"
+  };
+
+  return { track, features };
+}
+
+// ---------- Formatting helpers ----------
+function formatDuration(ms) {
+  const total = Math.round(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function round(n, digits = 3) {
+  if (n == null || Number.isNaN(n)) return null;
+  const p = 10 ** digits;
+  return Math.round(n * p) / p;
+}
+
+// ---------- Rendering ----------
+const $ = (id) => document.getElementById(id);
+
+function setStatus(msg, isError = false) {
+  const el = $("status");
+  if (!msg) { el.classList.add("hidden"); el.textContent = ""; return; }
+  el.textContent = msg;
+  el.classList.toggle("error", isError);
+  el.classList.remove("hidden");
+}
+
+function renderHeader(track) {
+  const img = (track.album.images && track.album.images[0]?.url) || "";
+  $("albumArt").src = img;
+  $("albumArt").alt = `${track.name} album art`;
+  $("trackTitle").textContent = track.name;
+  $("trackArtist").textContent = track.artists.map(a => a.name).join(", ");
+  $("trackAlbum").textContent = track.album.name;
+  $("trackYear").textContent = (track.album.release_date || "").slice(0, 4);
+}
+
+function makeCard({ label, value, sub, bar, camelot }) {
+  const div = document.createElement("div");
+  div.className = "card" + (camelot ? " camelot" : "");
+  const l = document.createElement("div");
+  l.className = "card-label";
+  l.textContent = label;
+  div.appendChild(l);
+  const v = document.createElement("div");
+  v.className = "card-value";
+  v.textContent = value;
+  div.appendChild(v);
+  if (sub) {
+    const s = document.createElement("div");
+    s.className = "card-sub";
+    s.textContent = sub;
+    div.appendChild(s);
+  }
+  if (bar != null) {
+    const b = document.createElement("div");
+    b.className = "bar";
+    const inner = document.createElement("div");
+    inner.style.width = `${Math.max(0, Math.min(1, bar)) * 100}%`;
+    b.appendChild(inner);
+    div.appendChild(b);
+  }
+  return div;
+}
+
+function renderAudioCards(features, camelot) {
+  const grid = $("audioGrid");
+  grid.innerHTML = "";
+
+  const cards = [
+    { label: "BPM",            value: Math.round(features.tempo),  sub: `${round(features.tempo, 2)} exact` },
+    { label: "Key",            value: keyName(features.key, features.mode) },
+    { label: "Camelot",        value: camelot || "—", camelot: true },
+    { label: "Energy",         value: round(features.energy, 2),        bar: features.energy },
+    { label: "Danceability",   value: round(features.danceability, 2),  bar: features.danceability },
+    { label: "Valence",        value: round(features.valence, 2),       bar: features.valence, sub: "Mood" },
+    { label: "Acousticness",   value: round(features.acousticness, 2),  bar: features.acousticness },
+    { label: "Instrumentalness", value: round(features.instrumentalness, 2), bar: features.instrumentalness },
+    { label: "Liveness",       value: round(features.liveness, 2),      bar: features.liveness },
+    { label: "Loudness",       value: `${round(features.loudness, 1)} dB` },
+    { label: "Duration",       value: formatDuration(features.duration_ms) },
+    {
+      label: "Time signature",
+      value: features.time_signature != null ? `${features.time_signature}/4` : "—",
+      sub: features.time_signature == null ? "Not provided" : null
+    }
+  ];
+
+  for (const c of cards) grid.appendChild(makeCard(c));
+}
+
+// ---------- Camelot Wheel (D3) ----------
+function renderWheel(currentCode) {
+  const container = d3.select("#wheel");
+  container.selectAll("*").remove();
+
+  const size = 520;
+  const cx = size / 2;
+  const cy = size / 2;
+  const outerR = 250;
+  const midR = 180;
+  const innerR = 100;
+
+  const svg = container.append("svg")
+    .attr("viewBox", `0 0 ${size} ${size}`)
+    .attr("width", size)
+    .attr("height", size);
+
+  const slots = buildWheelSlots();
+  const compat = new Set(compatibleCodes(currentCode));
+
+  const arcOuter = d3.arc().innerRadius(midR).outerRadius(outerR);
+  const arcInner = d3.arc().innerRadius(innerR).outerRadius(midR);
+
+  const segAngleDeg = 30;
+  const segAngleRad = (segAngleDeg * Math.PI) / 180;
+
+  // Slot N centered at N*30deg from top, clockwise.
+  function anglesForSlot(n) {
+    const centerRad = (n * 30) * Math.PI / 180;
+    return {
+      startAngle: centerRad - segAngleRad / 2,
+      endAngle:   centerRad + segAngleRad / 2
+    };
+  }
+
+  const g = svg.append("g").attr("transform", `translate(${cx},${cy})`);
+
+  function colorFor(code) {
+    if (code === currentCode) return "#1ed760"; // --accent
+    if (compat.has(code))     return "#1db954"; // --accent-dim
+    return "#1f1f1f";                            // --surface-interactive
+  }
+
+  slots.forEach(slot => {
+    const { startAngle, endAngle } = anglesForSlot(slot.num);
+    const isOuter = slot.letter === "B"; // outer = major = B
+    const arc = isOuter ? arcOuter : arcInner;
+
+    g.append("path")
+      .attr("class", "wheel-segment")
+      .attr("d", arc({ startAngle, endAngle }))
+      .attr("fill", colorFor(slot.code))
+      .attr("stroke", "#121212")
+      .attr("stroke-width", 2);
+
+    // Label position at center of ring.
+    const centerAngle = (startAngle + endAngle) / 2;
+    const ringMid = isOuter ? (midR + outerR) / 2 : (innerR + midR) / 2;
+    // SVG path arcs use 0 = top, clockwise (via d3.arc defaults).
+    // Convert that to cartesian: x = r*sin(theta), y = -r*cos(theta)
+    const lx = ringMid * Math.sin(centerAngle);
+    const ly = -ringMid * Math.cos(centerAngle);
+
+    g.append("text")
+      .attr("class", "wheel-label code")
+      .attr("x", lx)
+      .attr("y", ly - 7)
+      .text(slot.code);
+
+    g.append("text")
+      .attr("class", "wheel-label key")
+      .attr("x", lx)
+      .attr("y", ly + 8)
+      .text(slot.keyLabel);
+  });
+
+  // Center label
+  g.append("text")
+    .attr("class", "wheel-center")
+    .attr("y", -6)
+    .text("Camelot");
+  g.append("text")
+    .attr("class", "wheel-center")
+    .attr("y", 12)
+    .text("Wheel");
+}
+
+// ---------- JSON panel ----------
+function renderJson(obj) {
+  $("jsonBody").textContent = JSON.stringify(obj, null, 2);
+}
+
+// ---------- Main flow ----------
+async function analyze() {
+  const url = $("urlInput").value;
+  const id = parseTrackId(url);
+  if (!id) {
+    setStatus("Could not find a track ID in that URL. Expected format: https://open.spotify.com/track/...", true);
+    return;
+  }
+
+  const btn = $("analyzeBtn");
+  btn.disabled = true;
+  setStatus("Fetching track data...");
+  $("results").classList.add("hidden");
+
+  try {
+    const { track, features } = await fetchTrackData(id);
+
+    const camelot = camelotFor(features.key, features.mode);
+    const key = keyName(features.key, features.mode);
+
+    renderHeader(track);
+    renderAudioCards(features, camelot);
+    renderWheel(camelot);
+
+    const output = {
+      track: {
+        id: track.id,
+        name: track.name,
+        artists: track.artists.map(a => ({ id: a.id, name: a.name })),
+        album: {
+          name: track.album.name,
+          release_date: track.album.release_date,
+          image: track.album.images?.[0]?.url || null
+        },
+        url: track.external_urls?.spotify || null
+      },
+      analysis: {
+        source: "reccobeats",
+        bpm: round(features.tempo, 2),
+        key,
+        key_index: features.key,
+        mode: features.mode,
+        mode_name: features.mode === 1 ? "major" : "minor",
+        camelot,
+        compatible_camelot: compatibleCodes(camelot),
+        energy: round(features.energy, 3),
+        danceability: round(features.danceability, 3),
+        valence: round(features.valence, 3),
+        acousticness: round(features.acousticness, 3),
+        instrumentalness: round(features.instrumentalness, 3),
+        liveness: round(features.liveness, 3),
+        speechiness: round(features.speechiness, 3),
+        loudness_db: round(features.loudness, 2),
+        duration_ms: features.duration_ms,
+        duration: formatDuration(features.duration_ms),
+        time_signature: features.time_signature
+      }
+    };
+    renderJson(output);
+
+    $("results").classList.remove("hidden");
+    setStatus("");
+  } catch (err) {
+    console.error(err);
+    setStatus(err.message || String(err), true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------- Event wiring ----------
+$("analyzeBtn").addEventListener("click", analyze);
+$("urlInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") analyze();
+});
+
+$("copyBtn").addEventListener("click", async () => {
+  const text = $("jsonBody").textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    const btn = $("copyBtn");
+    const orig = btn.textContent;
+    btn.textContent = "Copied";
+    setTimeout(() => { btn.textContent = orig; }, 1200);
+  } catch {
+    setStatus("Clipboard copy failed. Select and copy manually.", true);
+  }
+});
+</script>
+
+</body>
+</html>
